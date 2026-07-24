@@ -1,0 +1,45 @@
+MIT License
+
+Copyright (c) 2026 Steffen Heil, secforge GmbH
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+--------------------------------------------------------------------------------
+
+TRADEMARK / BRANDING NOTICE  (NOT covered by the MIT license above)
+
+The MIT license above applies to the SOURCE CODE only. It does NOT grant any
+rights to the secforge branding: the name "secforge" and the secforge logo are
+trademarks of secforge GmbH and are excluded from the license.
+
+You MAY redistribute the original, unmodified binaries published by secforge GmbH
+(for example, from an official release) with the secforge branding intact, provided
+this copyright notice and license file are kept with them, unchanged.
+
+If, however, you rebuild, modify, or fork this software, you MUST remove or replace
+the secforge branding before distributing it. Specifically:
+
+  - assets/logo.svg and assets/logo-white.svg      (the logo artwork)
+  - src/client_agent/logo_png.h                    (the embedded logo header;
+    regenerate it from your own artwork with tools/update-logo.sh)
+  - assets/screenshot.png                          (shows the logo and name)
+  - any use of the "secforge" name in the UI or documentation
+
+The logo is compiled into tsw_agent.exe, so a binary you build yourself carries the
+secforge mark until you replace the artwork and regenerate logo_png.h.

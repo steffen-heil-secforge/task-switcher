@@ -1,0 +1,12 @@
+/build/
+/build-wsl/
+*.user
+*.iso
+.claude/
+
+# Windows alternate-data-stream junk
+*:Zone.Identifier
+
+
+# assembled release bundle (build output)
+/dist/

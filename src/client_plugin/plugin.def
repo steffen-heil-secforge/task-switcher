@@ -1,0 +1,3 @@
+LIBRARY tsw_plugin
+EXPORTS
+    VirtualChannelGetInstance
