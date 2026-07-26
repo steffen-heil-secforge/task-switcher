@@ -24,7 +24,9 @@ std::string encodeFrame(const Message& m);
 struct FrameReader {
     void feed(const char* data, size_t n);
     bool next(Message& out);
+    bool failed() const { return failed_; }
 private:
     std::string buf_;
+    bool failed_ = false;
 };
 }

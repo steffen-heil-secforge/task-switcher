@@ -76,11 +76,10 @@ public:
             }
             // Report our host mstsc PID once so the client maps this connection to the right mstsc window.
             if (connected_ && !sentBridge_) {
-                sentBridge_ = true;
                 Message b; b.type = MsgType::Bridge; b.requestId = (int)GetCurrentProcessId();
                 std::string bf = encodeFrame(b);
-                pipe_.write(bf.data(), (int)bf.size());
-                L("sent Bridge PID=", (long)b.requestId);
+                sentBridge_ = pipe_.write(bf.data(), (int)bf.size());
+                L(sentBridge_ ? "sent Bridge PID=" : "Bridge write failed PID=", (long)b.requestId);
             }
             bool w = false;
             if (connected_ && data && cb > 0 && cb <= (1u << 20)) w = pipe_.write((char*)data, (int)cb);   // server->client

@@ -61,7 +61,7 @@ if not exist "%DEST%\tsw_agent.exe" goto :failed
 REM (the elevated step already launched it via the scheduled task, at highest privileges)
 echo.
 echo Installed and running.
-echo   - Press Win+^^ to open the task switcher.
+echo   - Press Ctrl+^^ to open the task switcher.
 echo   - On the client: restart any open Remote Desktop windows so the plugin loads.
 echo.
 pause
