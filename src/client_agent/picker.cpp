@@ -22,8 +22,11 @@
 #include <cmath>
 #include <cwctype>
 #include <algorithm>
+#include <utility>
 #include "hub.hpp"
 #include "logo_png.h"
+#include <thread>
+#include <atomic>
 #pragma comment(lib, "d2d1.lib")
 #pragma comment(lib, "dwrite.lib")
 #pragma comment(lib, "windowscodecs.lib")
@@ -42,8 +45,8 @@ typedef BOOL (WINAPI* PSWCA)(HWND, WINCOMPATTRDATA*);
 static Hub* g_hub = nullptr;
 static HWND g_win = nullptr;
 static HHOOK g_kbHook = nullptr;
-static bool g_visible = false;
-static bool g_ctrlTab = false;   // Ctrl+^ was used as a Tab (while open) -> releasing Ctrl commits
+static std::atomic<bool> g_visible{false};   // read from the dedicated hook thread + the RDP relay
+static std::atomic<bool> g_ctrlTab{false};   // Ctrl+^ was used as a Tab (while open) -> releasing Ctrl commits
 static ULONGLONG g_shownAt = 0;   // guards close-on-blur against the activation race right after show
 static int  g_fgTries = 0;        // foreground-steal retry count
 static DWORD g_lockOld = 0; static bool g_lockChanged = false;
@@ -61,6 +64,13 @@ static bool forceForeground(HWND h){
 static bool g_darkOverride = false, g_hasOverride = false;   // header toggle; else follow OS
 #define WM_TSW_SHOW (WM_APP + 1)
 #define WM_TSW_KEY  (WM_APP + 2)
+#define WM_TSW_LOCAL_SHOW (WM_APP + 3)
+#define WM_TSW_REMOTE_SHOW (WM_APP + 4)
+
+struct RemotePreselection {
+    std::string endpoint;
+    std::string hwnd;
+};
 
 // ---- D2D / DWrite / WIC singletons ----
 static ID2D1Factory*       g_d2d = nullptr;
@@ -347,6 +357,29 @@ static void gotoComputer(int dir){
 
 static LRESULT CALLBACK proc(HWND h,UINT m,WPARAM wp,LPARAM lp){
     switch(m){
+    case WM_TSW_REMOTE_SHOW: {
+        RemotePreselection* pre=(RemotePreselection*)lp;
+        if(pre){
+            g_preEp=std::move(pre->endpoint);
+            g_preHwnd=std::move(pre->hwnd);
+            delete pre;
+        }
+        g_preApplied=false;
+        PostMessageW(h,WM_TSW_SHOW,0,0);
+        return 0; }
+    case WM_TSW_LOCAL_SHOW: {
+        // Keep the preselection model UI-thread-owned. The hook thread only captures the
+        // foreground HWND and delivers it here through the window's message queue.
+        HWND fg=(HWND)lp;
+        wchar_t cls[64]=L""; if(fg) GetClassNameW(fg,cls,64);
+        bool onDesktop = !lstrcmpW(cls,L"Progman") || !lstrcmpW(cls,L"WorkerW");
+        char b[32]; sprintf_s(b,"0x%llX",(unsigned long long)(uintptr_t)fg);
+        g_preEp=g_hub->localName();
+        g_preHwnd = onDesktop ? std::string("desktop") : std::string(b);
+        g_preApplied=false;
+        logLine(std::string("picker: local hook fired (Ctrl+^), pre=")+g_preHwnd);
+        PostMessageW(h,WM_TSW_SHOW,0,0);
+        return 0; }
     case WM_TSW_SHOW: {
         logLine("picker: WM_TSW_SHOW");
         g_hub->refreshLocal(); g_hub->requestEnum();
@@ -418,14 +451,7 @@ static LRESULT CALLBACK kbProc(int code, WPARAM wp, LPARAM lp){
             if(g_visible){ g_ctrlTab=true; PostMessageW(g_win,WM_TSW_KEY,(shift?VK_LEFT:VK_RIGHT),0); return 1; }   // Ctrl+^ = next task (->)
             if(!ctrl) return CallNextHookEx(g_kbHook,code,wp,lp);   // bare ^ while hidden = normal dead key
             HWND fg=GetForegroundWindow();
-            wchar_t cls[64]=L""; if(fg) GetClassNameW(fg,cls,64);
-            bool onDesktop = !lstrcmpW(cls,L"Progman") || !lstrcmpW(cls,L"WorkerW");
-            char b[32]; sprintf_s(b,"0x%llX",(unsigned long long)(uintptr_t)fg);
-            g_preEp=g_hub->localName();
-            g_preHwnd = onDesktop ? std::string("desktop") : std::string(b);   // desktop -> the "Desktop" entry
-            g_preApplied=false;
-            logLine(std::string("picker: local hook fired (Ctrl+^), pre=")+g_preHwnd);
-            if(g_win) PostMessageW(g_win,WM_TSW_SHOW,0,0);
+            if(g_win) PostMessageW(g_win,WM_TSW_LOCAL_SHOW,0,(LPARAM)fg);
             return 1;
         }
         if(g_visible){
@@ -639,10 +665,21 @@ void showPicker(Hub& hub){
         // Relayed hotkey from inside an RDP session: while open it means "cycle" (the user is
         // holding Ctrl and tapping ^ in the session); otherwise it opens the picker.
         if(g_visible){ g_ctrlTab=true; if(g_win) PostMessageW(g_win,WM_TSW_KEY,VK_RIGHT,0); return; }   // Ctrl+^ = next task (->)
-        g_preEp=ep; g_preHwnd=fg; g_preApplied=false; if(g_win) PostMessageW(g_win,WM_TSW_SHOW,0,0);
+        RemotePreselection* pre=new RemotePreselection{ep,fg};
+        if(!g_win || !PostMessageW(g_win,WM_TSW_REMOTE_SHOW,0,(LPARAM)pre)) delete pre;
     });
-    g_kbHook=SetWindowsHookExW(WH_KEYBOARD_LL,kbProc,GetModuleHandleW(nullptr),0);
+    // Install the low-level keyboard hook on its OWN thread with nothing but a tight message pump.
+    // A WH_KEYBOARD_LL callback is dispatched on the thread that installed it, and Windows silently
+    // drops the hook if that callback isn't serviced within LowLevelHooksTimeout. Installing it on
+    // the UI thread meant picker rendering/enumeration could starve it (the hook would die after a
+    // while and the hotkey went dead until restart). On a dedicated thread the callback only reads a
+    // couple of flags and PostMessages the UI thread, so it stays responsive indefinitely.
+    std::thread([]{
+        g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, kbProc, GetModuleHandleW(nullptr), 0);
+        MSG hm; while(GetMessageW(&hm,nullptr,0,0)){ TranslateMessage(&hm); DispatchMessageW(&hm); }
+        if(g_kbHook) UnhookWindowsHookEx(g_kbHook);
+    }).detach();
+
     MSG msg; while(GetMessageW(&msg,nullptr,0,0)){ TranslateMessage(&msg); DispatchMessageW(&msg); }
-    if(g_kbHook) UnhookWindowsHookEx(g_kbHook);
 }
 }
