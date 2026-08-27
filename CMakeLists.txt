@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 cmake_policy(SET CMP0091 NEW)   # honor CMAKE_MSVC_RUNTIME_LIBRARY
-project(task_switcher CXX)
+project(task_switcher VERSION 1.0.3 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Static CRT so the binaries run on fresh Windows with no VC++ runtime installed
